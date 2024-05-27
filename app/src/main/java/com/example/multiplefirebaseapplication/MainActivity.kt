@@ -2,114 +2,72 @@ package com.example.multiplefirebaseapplication
 
 import android.os.Bundle
 import android.util.Log
-import android.widget.Button
-import android.widget.Toast
+import android.view.View
+import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import com.google.firebase.Firebase
-import com.google.firebase.FirebaseOptions
-import com.google.firebase.app
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.firestore
-import com.google.firebase.initialize
-import com.google.gson.Gson
+import com.google.firebase.remoteconfig.ConfigUpdate
+import com.google.firebase.remoteconfig.ConfigUpdateListener
+import com.google.firebase.remoteconfig.FirebaseRemoteConfig
+import com.google.firebase.remoteconfig.FirebaseRemoteConfigException
+import com.google.firebase.remoteconfig.remoteConfig
+import com.google.firebase.remoteconfig.remoteConfigSettings
 
 
 class MainActivity : AppCompatActivity() {
-    private val db: FirebaseFirestore by lazy {
-        FirebaseFirestore.getInstance()
+
+    private lateinit var txtTest: TextView
+
+    // Initialize Firebase Remote Config
+    val remoteConfig = Firebase.remoteConfig
+    // Set default values (optional but recommended)
+    private val configSettings = remoteConfigSettings {
+        minimumFetchIntervalInSeconds = 3600 // 1 hour, you can adjust as needed
     }
-    private var firebaseConfig: FirebaseConfig? = null
-    private var dbChild: FirebaseFirestore? = null
+
+    // Method to fetch and activate config values
+    private fun fetchRemoteConfig() {
+        remoteConfig.fetchAndActivate()
+            .addOnCompleteListener { task ->
+                if (task.isSuccessful) {
+                    // Fetch the initial value of intro_enable and set the visibility
+                    displayIntroMessage(remoteConfig.getBoolean("intro_enable"))
+                } else {
+                    Log.e("RemoteConfig", "Config params update failed")
+                }
+            }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-        val btnGetChild = findViewById<Button>(R.id.btnGetChild)
-        val btnCreateChild = findViewById<Button>(R.id.btnCreateChild)
-        val btnGetDataChild = findViewById<Button>(R.id.btnGetDataChild)
-        btnGetChild.setOnClickListener {
-            getDocumentData()
-        }
-        btnCreateChild.setOnClickListener {
-            createNewInstance()
-        }
-        btnGetDataChild.setOnClickListener {
-            getChildDocumentData()
-        }
-    }
 
-    private fun createNewInstance() {
-        try {
-            val options = firebaseConfig?.applicationId?.let {
-                firebaseConfig?.apiKey?.let { it1 ->
-                    FirebaseOptions.Builder()
-                        .setProjectId(firebaseConfig?.projectId)
-                        .setApplicationId(it)
-                        .setApiKey(it1)
-                        .setDatabaseUrl(firebaseConfig?.databaseUrl)
-                        .setStorageBucket(firebaseConfig?.storageBucket)
-                        .build()
+        txtTest = findViewById(R.id.txtTest)
+
+        //Setup remote config
+        remoteConfig.setConfigSettingsAsync(configSettings)
+        fetchRemoteConfig()
+
+        // Set up the config update listener
+        remoteConfig.addOnConfigUpdateListener(object : ConfigUpdateListener {
+            override fun onUpdate(configUpdate: ConfigUpdate) {
+                if (configUpdate.updatedKeys.contains("intro_enable")) {
+                    // Fetch the updated value
+                    val introEnable = remoteConfig.getBoolean("intro_enable")
+
+                    // Call the method to display or hide the intro message
+                    displayIntroMessage(introEnable)
                 }
             }
-            // Initialize secondary FirebaseApp.
-            if (options != null) {
-                Firebase.initialize(context = this, options, "secondary")
+
+            override fun onError(error: FirebaseRemoteConfigException) {
+                Log.w("RemoteConfig", "Config update error with code: ${error.code}", error)
             }
-            // Retrieve secondary FirebaseApp.
-            val secondary = Firebase.app("secondary")
-            // Get the database for the other app.
-            dbChild = Firebase.firestore(secondary)
-            Toast.makeText(this, "Kết nối firebase child thành công", Toast.LENGTH_SHORT).show()
-        }catch (e:Exception){
-            Toast.makeText(this, "Eror:${e.message}", Toast.LENGTH_SHORT).show()
-        }
+        })
 
     }
 
-    private fun getDocumentData() {
-        db.collection("child_firebase")
-            .limit(1)
-            .get()
-            .addOnCompleteListener { task ->
-                if (task.isSuccessful) {
-                    for (document in task.result) {
-                        Toast.makeText(
-                            this,
-                            document.id + " => " + document.getData(),
-                            Toast.LENGTH_SHORT
-                        ).show()
-                        firebaseConfig = document.getData().toFirebaseConfig()
-                        Log.d("OKKKK",firebaseConfig.toString())
-                    }
-                } else {
-                    Toast.makeText(
-                        this,
-                        "Lỗi khi lấy dữ liệu:${task.exception}",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                }
-            }
-    }
-
-    private fun getChildDocumentData() {
-        dbChild?.collection("test")
-            ?.limit(1)
-            ?.get()
-            ?.addOnCompleteListener { task ->
-                if (task.isSuccessful) {
-                    for (document in task.result) {
-                        Toast.makeText(
-                            this,
-                            document.id + " => " + document.getData(),
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
-                } else {
-                    Toast.makeText(
-                        this,
-                        "Lỗi khi lấy dữ liệu:${task.exception}",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                }
-            }
+    private fun displayIntroMessage(isVisible: Boolean) {
+        txtTest.visibility = if (isVisible) View.VISIBLE else View.GONE
     }
 }
